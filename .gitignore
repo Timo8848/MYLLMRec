@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+.DS_Store
+*.pyc
+.claude/
+*.csv
+*.json
+eda_output/
+*.npy
+*.pkl
+LLMRec/data/
+LLMRec/logs/
