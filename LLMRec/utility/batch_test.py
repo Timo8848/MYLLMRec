@@ -99,7 +99,12 @@ def test_one_user(x):
 
     all_items = set(range(ITEM_NUM))
 
-    test_items = list(all_items - set(training_items))
+    # Exclude training items; when evaluating on test, also exclude val items
+    exclude = set(training_items)
+    if not is_val:
+        val_items = data_generator.val_set.get(u, [])
+        exclude.update(val_items)
+    test_items = list(all_items - exclude)
 
     if args.test_flag == 'part':
         r, auc = ranklist_by_heapq(user_pos_test, test_items, rating, Ks)

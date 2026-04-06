@@ -14,7 +14,12 @@ from utility.parser import parse_args
 from utility.norm import build_sim, build_knn_normalized_graph
 args = parse_args()
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+if torch.cuda.is_available():
+    device = torch.device("cuda")
+elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+    device = torch.device("mps")
+else:
+    device = torch.device("cpu")
 
 
 def feature_enabled(flag_name):

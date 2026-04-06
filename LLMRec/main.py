@@ -21,7 +21,12 @@ import random
 
 import copy
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+if torch.cuda.is_available():
+    device = torch.device("cuda")
+elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+    device = torch.device("mps")
+else:
+    device = torch.device("cpu")
 
 from utility.parser import parse_args
 from Models import MM_Model, Decoder  
@@ -183,15 +188,15 @@ class Trainer(object):
 
         self.optimizer = optim.AdamW(
         [
-            {'params':self.model_mm.parameters()},      
+            {'params':self.model_mm.parameters()},
         ]
-            , lr=self.lr)  
-        
+            , lr=self.lr, weight_decay=args.weight_decay)
+
         self.de_optimizer = optim.AdamW(
         [
-            {'params':self.decoder.parameters()},      
+            {'params':self.decoder.parameters()},
         ]
-            , lr=args.de_lr)  
+            , lr=args.de_lr, weight_decay=args.weight_decay)  
 
 
 
@@ -296,7 +301,7 @@ class Trainer(object):
             self.gene_u, self.gene_real, self.gene_fake = None, None, {}
             self.topk_p_dict, self.topk_id_dict = {}, {}
 
-            for idx in tqdm(range(n_batch)):
+            for idx in tqdm(range(n_batch), disable=not sys.stderr.isatty()):
                 self.model_mm.train()
                 sample_t1 = time()
                 users, pos_items, neg_items = data_generator.sample()
@@ -398,26 +403,38 @@ class Trainer(object):
             t2 = time()
             users_to_test = list(data_generator.test_set.keys())
             users_to_val = list(data_generator.val_set.keys())
-            ret = self.test(users_to_test, is_val=False)  #^-^
+
+            # Evaluate on validation set for early stopping
+            if users_to_val:
+                val_ret = self.test(users_to_val, is_val=True)
+            else:
+                # Fallback: if no val users, use test (should not happen after re-split)
+                val_ret = self.test(users_to_test, is_val=False)
+                self.logger.logging("WARNING: No val users, using test set for early stopping!")
+
             training_time_list.append(t2 - t1)
 
             t3 = time()
 
             if args.verbose > 0:
-                perf_str = 'Epoch %d [%.1fs + %.1fs]: train==[%.5f=%.5f + %.5f + %.5f], recall=[%.5f, %.5f, %.5f, %.5f], ' \
-                           'precision=[%.5f, %.5f, %.5f, %.5f], hit=[%.5f, %.5f, %.5f, %.5f], ndcg=[%.5f, %.5f, %.5f, %.5f]' % \
-                           (epoch, t2 - t1, t3 - t2, loss, mf_loss, emb_loss, reg_loss, ret['recall'][0], ret['recall'][1], ret['recall'][2],
-                            ret['recall'][-1],
-                            ret['precision'][0], ret['precision'][1], ret['precision'][2], ret['precision'][-1], ret['hit_ratio'][0], ret['hit_ratio'][1], ret['hit_ratio'][2], ret['hit_ratio'][-1],
-                            ret['ndcg'][0], ret['ndcg'][1], ret['ndcg'][2], ret['ndcg'][-1])
+                perf_str = 'Epoch %d [%.1fs + %.1fs]: train==[%.5f=%.5f + %.5f + %.5f], val_recall=[%.5f, %.5f, %.5f, %.5f], ' \
+                           'val_precision=[%.5f, %.5f, %.5f, %.5f], val_hit=[%.5f, %.5f, %.5f, %.5f], val_ndcg=[%.5f, %.5f, %.5f, %.5f]' % \
+                           (epoch, t2 - t1, t3 - t2, loss, mf_loss, emb_loss, reg_loss, val_ret['recall'][0], val_ret['recall'][1], val_ret['recall'][2],
+                            val_ret['recall'][-1],
+                            val_ret['precision'][0], val_ret['precision'][1], val_ret['precision'][2], val_ret['precision'][-1], val_ret['hit_ratio'][0], val_ret['hit_ratio'][1], val_ret['hit_ratio'][2], val_ret['hit_ratio'][-1],
+                            val_ret['ndcg'][0], val_ret['ndcg'][1], val_ret['ndcg'][2], val_ret['ndcg'][-1])
                 self.logger.logging(perf_str)
 
-            if ret['recall'][1] > best_recall:
-                best_recall = ret['recall'][1]
+            # Early stopping based on VALIDATION recall
+            if val_ret['recall'][1] > best_recall:
+                best_recall = val_ret['recall'][1]
+                # Evaluate on test set and save as best checkpoint metrics
                 test_ret = self.test(users_to_test, is_val=False)
                 best_metrics = copy.deepcopy(test_ret)
                 best_epoch = epoch
-                self.logger.logging("Test_Recall@%d: %.5f,  precision=[%.5f], ndcg=[%.5f]" % (eval(args.Ks)[1], test_ret['recall'][1], test_ret['precision'][1], test_ret['ndcg'][1]))
+                self.logger.logging("Val_Recall@%d: %.5f => Test_Recall@%d: %.5f, test_precision=[%.5f], test_ndcg=[%.5f]" % (
+                    eval(args.Ks)[1], val_ret['recall'][1],
+                    eval(args.Ks)[1], test_ret['recall'][1], test_ret['precision'][1], test_ret['ndcg'][1]))
                 stopping_step = 0
             elif stopping_step < args.early_stopping_patience:
                 stopping_step += 1
@@ -425,7 +442,8 @@ class Trainer(object):
             else:
                 self.logger.logging('#####Early stop! #####')
                 break
-        self.logger.logging(str(test_ret))
+        self.logger.logging("Best epoch: %d, Best val_recall@%d: %.5f" % (best_epoch, eval(args.Ks)[1], best_recall))
+        self.logger.logging("Final Test metrics: %s" % str(best_metrics))
         run_summary = build_run_summary(best_epoch=best_epoch, best_metrics=best_metrics)
         self.logger.logging("RunSummary: %s" % json.dumps(run_summary))
 

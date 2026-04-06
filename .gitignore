@@ -10,3 +10,5 @@ eda_output/
 *.pkl
 LLMRec/data/
 LLMRec/logs/
+LLMRec/train_output/
+NewData/processed/

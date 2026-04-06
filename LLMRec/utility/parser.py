@@ -10,8 +10,8 @@ def parse_args():
     parser.add_argument('--verbose', type=int, default=5, help='Interval of evaluation.')
     parser.add_argument('--epoch', type=int, default=1000, help='Number of epoch.')  
     parser.add_argument('--regs', nargs='?', default='[1e-5,1e-5,1e-2]', help='Regularizations.')  
-    parser.add_argument('--embed_size', type=int, default=64, help='Embedding size.')                     
-    parser.add_argument('--weight_size', nargs='?', default='[64, 64]', help='Output sizes of every layer')
+    parser.add_argument('--embed_size', type=int, default=32, help='Embedding size.')
+    parser.add_argument('--weight_size', nargs='?', default='[32, 32]', help='Output sizes of every layer')
     parser.add_argument('--early_stopping_patience', type=int, default=7, help='Early Stop Patience') 
     parser.add_argument('--mess_dropout', nargs='?', default='[0.1, 0.1]',help='Keep probability w.r.t. message dropout (i.e., 1-dropout_ratio) for each deep layer. 1: no dropout.')
     parser.add_argument('--sparse', type=int, default=1, help='Sparse or dense adjacency matrix')   
@@ -30,11 +30,11 @@ def parse_args():
     parser.add_argument('--batch_size', type=int, default=1024, help='Batch size.')
     parser.add_argument('--lr', type=float, default=0.0001, help='Learning rate.')  
     parser.add_argument('--de_lr', type=float, default=0.0002, help='Decoder learning rate.')  
-    parser.add_argument('--weight_decay', default=1e-4, type=float, help='Weight_decay')  #
+    parser.add_argument('--weight_decay', default=1e-3, type=float, help='Weight_decay')  #
 
     # model
     parser.add_argument('--layers', type=int, default=1, help='Number of graph conv layers')  
-    parser.add_argument('--drop_rate', type=float, default=0.0, help='Dropout rate')
+    parser.add_argument('--drop_rate', type=float, default=0.3, help='Dropout rate')
     parser.add_argument('--mask_rate', type=float, default=0.0, help='Mask rate')   
     parser.add_argument('--mask', type=bool, default=False, help='If mask')   
     parser.add_argument('--user_cat_rate', type=float, default=2.8, help='User cat rate')
