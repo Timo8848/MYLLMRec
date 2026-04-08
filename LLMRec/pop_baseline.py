@@ -1,68 +1,79 @@
 #!/usr/bin/env python3
 """
-Pop@20 baseline: recommend the 20 most popular items from the training set
-to every test user and compute Recall@20.
+Popularity baseline for the Steam-700-Dense dataset.
+
+Recommends the top-K most popular items (by training interactions) to every
+test user. Computes Recall@K and NDCG@K under the Leave-One-Out evaluation
+protocol (one ground-truth item per user).
+
+For LOO with one relevant item:
+    NDCG@K = 1 / log2(rank + 1)   if the item is in the top-K (rank 1-indexed)
+           = 0                    otherwise
+(IDCG = 1 because the ideal ranking puts the single relevant item at rank 1.)
 """
 
 import json
+import math
 from collections import Counter
 from pathlib import Path
 
 
-def pop_at_k(data_dir: str, k: int = 20):
+def pop_baseline(data_dir: str, k: int = 20):
     data_dir = Path(data_dir)
     train = json.loads((data_dir / "train.json").read_text())
-    test = json.loads((data_dir / "test.json").read_text())
     val = json.loads((data_dir / "val.json").read_text())
+    test = json.loads((data_dir / "test.json").read_text())
 
-    # Count item popularity in training set
+    # Rank items by training popularity (descending)
     item_counts: Counter = Counter()
     for items in train.values():
         for iid in items:
             item_counts[iid] += 1
 
-    top_k_items = set(iid for iid, _ in item_counts.most_common(k))
-    print(f"Top-{k} most popular items (by train interactions):")
+    # Ordered top-k recommendation list (same for every user)
+    ranked_items = [iid for iid, _ in item_counts.most_common()]
+    top_k = ranked_items[:k]
+    item_to_rank = {iid: rank + 1 for rank, iid in enumerate(top_k)}  # 1-indexed
+
+    def evaluate(split, split_name):
+        n_users = 0
+        recall_sum = 0.0
+        ndcg_sum = 0.0
+        for uid, gt_items in split.items():
+            if not gt_items:
+                continue
+            n_users += 1
+            # LOO: one ground-truth item per user
+            target = gt_items[0]
+            # Exclude items already seen in train (Pop baseline isn't user-personalized
+            # but for consistency with model evaluation we filter seen items here too).
+            # In practice the popularity ranking is the same for everyone, so seen
+            # items just shift recommendations down — we still take the top-k of
+            # whatever's left. To match the model's evaluation protocol exactly:
+            seen = set(train.get(uid, []))
+            personal_topk = [iid for iid in ranked_items if iid not in seen][:k]
+            personal_rank = {iid: rank + 1 for rank, iid in enumerate(personal_topk)}
+
+            if target in personal_rank:
+                rank = personal_rank[target]
+                recall_sum += 1.0
+                ndcg_sum += 1.0 / math.log2(rank + 1)
+
+        recall = recall_sum / n_users if n_users else 0.0
+        ndcg = ndcg_sum / n_users if n_users else 0.0
+        print(f"  {split_name}: users={n_users}, Recall@{k}={recall:.5f}, NDCG@{k}={ndcg:.5f}")
+        return recall, ndcg
+
+    print(f"Pop@{k} Baseline on {data_dir.name}")
+    print(f"Top-{k} most popular items in train (no per-user filtering):")
     for rank, (iid, cnt) in enumerate(item_counts.most_common(k), 1):
-        print(f"  {rank:3d}. item {iid:5d}  ({cnt} interactions)")
-
-    # Compute Recall@K for test set
-    hits = 0
-    total_users = 0
-    for uid_str, test_items in test.items():
-        if not test_items:
-            continue
-        total_users += 1
-        # A hit if any test item is in the top-k
-        for iid in test_items:
-            if iid in top_k_items:
-                hits += 1
-
-    recall = hits / total_users if total_users > 0 else 0.0
-    print(f"\nPop@{k} Baseline:")
-    print(f"  Test users: {total_users}")
-    print(f"  Hits: {hits}")
-    print(f"  Recall@{k}: {recall:.5f}")
-
-    # Also compute for val set
-    val_hits = 0
-    val_total = 0
-    for uid_str, val_items in val.items():
-        if not val_items:
-            continue
-        val_total += 1
-        for iid in val_items:
-            if iid in top_k_items:
-                val_hits += 1
-
-    val_recall = val_hits / val_total if val_total > 0 else 0.0
-    print(f"\n  Val users: {val_total}")
-    print(f"  Val Hits: {val_hits}")
-    print(f"  Val Recall@{k}: {val_recall:.5f}")
-
-    return recall
+        print(f"  {rank:3d}. item {iid:5d}  ({cnt} train interactions)")
+    print()
+    val_r, val_n = evaluate(val, "Val ")
+    test_r, test_n = evaluate(test, "Test")
+    return {"recall": test_r, "ndcg": test_n, "val_recall": val_r, "val_ndcg": val_n}
 
 
 if __name__ == "__main__":
     data_dir = "/Volumes/FirstDrive/project/LLMRec/data/steam_new_warm_start_demo"
-    pop_at_k(data_dir, k=20)
+    pop_baseline(data_dir, k=20)
