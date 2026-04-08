@@ -432,6 +432,16 @@ class Trainer(object):
                 test_ret = self.test(users_to_test, is_val=False)
                 best_metrics = copy.deepcopy(test_ret)
                 best_epoch = epoch
+                # Optionally dump propagated item embeddings at the best-val epoch
+                if args.save_item_embedding_path:
+                    self.model_mm.eval()
+                    with torch.no_grad():
+                        _, ia_emb_best, *_ = self.model_mm(
+                            self.ui_graph, self.iu_graph, self.image_ui_graph,
+                            self.image_iu_graph, self.text_ui_graph, self.text_iu_graph)
+                    os.makedirs(os.path.dirname(args.save_item_embedding_path) or '.', exist_ok=True)
+                    np.save(args.save_item_embedding_path, ia_emb_best.detach().cpu().numpy())
+                    self.logger.logging("Saved item embeddings -> %s" % args.save_item_embedding_path)
                 self.logger.logging("Val_Recall@%d: %.5f => Test_Recall@%d: %.5f, test_precision=[%.5f], test_ndcg=[%.5f]" % (
                     eval(args.Ks)[1], val_ret['recall'][1],
                     eval(args.Ks)[1], test_ret['recall'][1], test_ret['precision'][1], test_ret['ndcg'][1]))

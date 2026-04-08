@@ -74,6 +74,7 @@ def parse_args():
     )
     parser.add_argument('--experiment_name', default='', type=str, help='Optional stable experiment label for logs and saved metrics.')
     parser.add_argument('--result_json_path', default='', type=str, help='Optional JSON path used to save structured run metrics.')
+    parser.add_argument('--save_item_embedding_path', default='', type=str, help='Optional .npy path to dump the propagated item embeddings at the best-val epoch.')
 
     # loss
     parser.add_argument('--aug_mf_rate', type=float, default=0.012, help='Augmentation mf rate')      # 
